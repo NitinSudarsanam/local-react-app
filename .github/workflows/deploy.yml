@@ -1,0 +1,53 @@
+name: Deploy React UI to IIS with Backup
+
+on:
+  workflow_dispatch:   # manual trigger
+  # Optional: trigger automatically after build workflow
+  # workflow_run:
+  #   workflows: ["Build React UI (Stage from Development branch)"]
+  #   types:
+  #     - completed
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, windows]
+
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: react-stage-build
+          path: ./build-artifact
+
+      - name: Stop IIS Application Pool
+        run: |
+          Import-Module WebAdministration
+          Stop-WebAppPool -Name "MyAppPool"
+        shell: powershell
+
+      - name: Backup current site
+        run: |
+          $sitePath = "D:\AdroitApp\StageWebSites\PowerAutomate-ui\website"
+          $backupRoot = "D:\AdroitApp\StageWebSites\PowerAutomate-ui\WebsiteBackups"
+          if (-Not (Test-Path $backupRoot)) {
+              New-Item -ItemType Directory -Path $backupRoot
+          }
+          if (Test-Path $sitePath) {
+              $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+              $backupPath = Join-Path $backupRoot $timestamp
+              Move-Item -Path $sitePath -Destination $backupPath
+          }
+          New-Item -ItemType Directory -Path $sitePath
+        shell: powershell
+
+      - name: Copy files to site folder
+        run: |
+          $sitePath = "D:\AdroitApp\StageWebSites\PowerAutomate-ui\website"
+          Copy-Item -Recurse -Force "./build-artifact/*" "$sitePath"
+        shell: powershell
+
+      - name: Start IIS Application Pool
+        run: |
+          Import-Module WebAdministration
+          Start-WebAppPool -Name "MyAppPool"
+        shell: powershell
